@@ -1,199 +1,106 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Your Place | متجرك</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;font-family:'Cairo';margin:0;padding:0}
-body{background:#f5f5f5}
-.login-screen{height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%)}
-.login-box{background:white;padding:40px;border-radius:15px;width:90%;max-width:400px;box-shadow:0 10px 30px rgba(0,0,0,0.3)}
-.login-box input{width:100%;padding:12px;margin:10px 0;border:2px solid #ddd;border-radius:8px;font-size:16px}
-.login-box button{width:100%;padding:12px;background:#667eea;color:white;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer}
-.hidden{display:none}
-header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px;display:flex;justify-content:space-between;align-items:center}
-header button{background:#ff6b6b;color:white;border:none;padding:8px 15px;border-radius:8px;cursor:pointer}
-.container{max-width:1200px;margin:20px auto;padding:20px}
-.admin-panel{background:white;padding:20px;border-radius:15px;margin-bottom:20px;box-shadow:0 3px 10px rgba(0,0,0,0.1)}
-.admin-panel input{padding:10px;margin:5px;border:2px solid #ddd;border-radius:8px;width:calc(33% - 15px)}
-.admin-panel button{padding:10px 20px;background:#28a745;color:white;border:none;border-radius:8px;cursor:pointer;margin:5px}
-.products-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
-.product{background:white;padding:15px;border-radius:15px;box-shadow:0 3px 10px rgba(0,0,0,0.1);text-align:center}
-.product img{width:100%;height:200px;object-fit:cover;border-radius:10px}
-.price{color:#667eea;font-size:22px;font-weight:bold;margin:10px 0}
-.product button{background:#667eea;color:white;border:none;padding:10px 20px;border-radius:8px;cursor:pointer;width:100%}
-.delete-btn{background:#dc3545!important;margin-top:5px}
-.cart{position:fixed;bottom:20px;left:20px;background:#ff6b6b;color:white;padding:15px 25px;border-radius:50px;cursor:pointer;font-weight:bold;z-index:999}
-#cartBox{display:none;position:fixed;bottom:80px;left:20px;background:white;padding:20px;border-radius:15px;box-shadow:0 10px 30px rgba(0,0,0,0.3);width:320px;z-index:999}
-.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px}
-.stat-box{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px;border-radius:10px;text-align:center}
-</style>
-</head>
-<body>
+const express = require('express');
+const path = require('path');
+const helmet = require('helmet');
+const xss = require('xss-clean');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-<!-- شاشة تسجيل الدخول -->
-<div id="loginScreen" class="login-screen">
-  <div class="login-box">
-    <h2 style="text-align:center;margin-bottom:20px">🔐 دخول لوحة التحكم</h2>
-    <input type="password" id="password" placeholder="كلمة السر">
-    <button onclick="login()">دخول</button>
-    <p style="margin-top:15px;font-size:14px;color:#666">كلمة السر الافتراضية: admin123</p>
-  </div>
-</div>
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'KEMOMASHAKEL_SUPER_SECURE_TOKEN_2026';
 
-<!-- المتجر + لوحة التحكم -->
-<div id="storeApp" class="hidden">
-  <header>
-    <h2>🛍️ لوحة تحكم Your Place</h2>
-    <button onclick="logout()">خروج</button>
-  </header>
+app.use(express.json());
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(xss());
 
-  <div class="container">
-    <!-- الاحصائيات -->
-    <div class="stats">
-      <div class="stat-box">
-        <h3 id="totalProducts">0</h3>
-        <p>عدد المنتجات</p>
-      </div>
-      <div class="stat-box">
-        <h3 id="totalOrders">0</h3>
-        <p>الطلبات في السلة</p>
-      </div>
-      <div class="stat-box">
-        <h3 id="totalSales">0 جنيه</h3>
-        <p>اجمالي المبيعات</p>
-      </div>
-    </div>
+// توجيه المتصفح للمجلد العام
+app.use(express.static(path.join(__dirname, 'public')));
 
-    <!-- اضافة منتج -->
-    <div class="admin-panel">
-      <h3>➕ اضافة منتج جديد</h3>
-      <input type="text" id="pName" placeholder="اسم المنتج">
-      <input type="number" id="pPrice" placeholder="السعر">
-      <input type="text" id="pImage" placeholder="رابط الصورة">
-      <button onclick="addProduct()">اضافة المنتج</button>
-      <p style="font-size:12px;color:#666;margin-top:10px">عشان تجيب رابط صورة: جوجل صور > كليك يمين > نسخ عنوان الصورة</p>
-    </div>
+let db_orders = [];
+let db_products = [];
+let admin_hash = "";
 
-    <!-- المنتجات -->
-    <h3>📦 المنتجات - دوس احذف عشان تمسح</h3>
-    <div class="products-grid" id="productsGrid"></div>
-  </div>
+(async () => {
+    admin_hash = await bcrypt.hash('kemomashakel251', 10);
+})();
 
-  <!-- سلة الزبون -->
-  <div class="cart" onclick="toggleCart()">🛒 السلة <span id="cartCount">0</span></div>
-  <div id="cartBox">
-    <h3>سلة المشتريات</h3>
-    <div id="cartItems">فاضية</div>
-    <button style="margin-top:10px;background:#25D366" onclick="sendWhatsApp()">اطلب واتساب</button>
-  </div>
-</div>
+const verifyAdminToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return res.status(403).json({ error: 'وصول مرفوض، التوكن مفقود' });
+    
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(401).json({ error: 'جلسة غير صالحة أو منتهية' });
+        req.user = decoded;
+        next();
+    });
+};
 
-<script>
-const PASSWORD = "admin123"; // غير كلمة السر من هنا
-let products = JSON.parse(localStorage.getItem('products')) || [
-  {id:1, name:"سماعة لاسلكية", price:350, image:"https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400"},
-  {id:2, name:"ساعة ذكية", price:800, image:"https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400"}
-];
-let cart = [];
+app.post('/api/auth/login', async (req, res) => {
+    const { username, password } = req.body;
+    if(username === 'kareem') {
+        const match = await bcrypt.compare(password, admin_hash);
+        if(match) {
+            const token = jwt.sign({ user: 'kareem', role: 'admin' }, JWT_SECRET, { expiresIn: '8h' });
+            return res.json({ success: true, token });
+        }
+    }
+    res.status(401).json({ success: false, error: 'بيانات غير صحيحة' });
+});
 
-// تسجيل الدخول
-function login(){
-  if(document.getElementById('password').value === PASSWORD){
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('storeApp').classList.remove('hidden');
-    showProducts();
-    updateStats();
-  } else {
-    alert("كلمة السر غلط ❌");
+app.post('/api/orders', (req, res) => {
+    const { name, phone, address, qty, product_name, price } = req.body;
+    const client_total = parseFloat(price) * parseInt(qty);
+    
+    const newOrder = {
+        id: db_orders.length + 1,
+        name, phone, address, qty, product_name,
+        client_total: client_total,
+        shipping_cost: 0,
+        final_grand_total: client_total
+    };
+    db_orders.push(newOrder);
+    res.json({ success: true, order: newOrder });
+});
+
+app.get('/api/orders', verifyAdminToken, (req, res) => {
+    res.json(db_orders);
+});
+
+app.put('/api/orders/:id/shipping', verifyAdminToken, (req, res) => {
+    const orderId = parseInt(req.params.id);
+    const { shipping_cost } = req.body;
+    
+    const order = db_orders.find(o => o.id === orderId);
+    if(!order) return res.status(404).json({ error: 'الطلب غير موجود' });
+    
+    order.shipping_cost = parseFloat(shipping_cost) || 0;
+    order.final_grand_total = order.client_total + order.shipping_cost;
+    
+    res.json({ success: true, final_grand_total: order.final_grand_total });
+});
+
+app.post('/api/products', verifyAdminToken, (req, res) => {
+    const { name, price, image } = req.body;
+    const newProduct = { id: db_products.length + 1, name, price: parseFloat(price), image };
+    db_products.push(newProduct);
+    res.json({ success: true, message: 'تم إدراج المنتج بالمستودع بنجاح!' });
+});
+
+app.listen(PORT, () => console.log(`Your Place running on port ${PORT}`));
+{
+  "name": "my-site",
+  "version": "1.0.0",
+  "description": "Your Place Enterprise E-Commerce Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "xss-clean": "^0.1.4"
   }
 }
-function logout(){
-  document.getElementById('storeApp').classList.add('hidden');
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('password').value = "";
-}
-
-// اضافة منتج
-function addProduct(){
-  let name = document.getElementById('pName').value;
-  let price = document.getElementById('pPrice').value;
-  let image = document.getElementById('pImage').value;
-  if(!name || !price || !image){alert("كمل البيانات كلها");return}
-  
-  let newProduct = {id:Date.now(), name, price:parseInt(price), image};
-  products.push(newProduct);
-  saveProducts();
-  showProducts();
-  updateStats();
-  
-  document.getElementById('pName').value = "";
-  document.getElementById('pPrice').value = "";
-  document.getElementById('pImage').value = "";
-  alert("تم اضافة المنتج ✅");
-}
-
-// مسح منتج
-function deleteProduct(id){
-  if(confirm("متأكد عايز تمسح المنتج؟")){
-    products = products.filter(p => p.id != id);
-    saveProducts();
-    showProducts();
-    updateStats();
-  }
-}
-
-// عرض المنتجات
-function showProducts(){
-  let grid = document.getElementById('productsGrid');
-  grid.innerHTML = products.map(p => `
-    <div class="product">
-      <img src="${p.image}">
-      <h3>${p.name}</h3>
-      <p class="price">${p.price} جنيه</p>
-      <button onclick="addToCart('${p.name}',${p.price})">اضف للسلة</button>
-      <button class="delete-btn" onclick="deleteProduct(${p.id})">🗑️ احذف</button>
-    </div>
-  `).join('');
-}
-
-// السلة
-function addToCart(name,price){
-  cart.push({name,price});
-  document.getElementById('cartCount').innerText = cart.length;
-  updateStats();
-  alert(name + " اتضاف للسلة ✅");
-}
-function toggleCart(){
-  let box = document.getElementById('cartBox');
-  box.style.display = box.style.display=='block'?'none':'block';
-  let items = document.getElementById('cartItems');
-  if(cart.length==0){items.innerHTML='فاضية'}
-  else{
-    let total = cart.reduce((sum,p)=>sum+p.price,0);
-    items.innerHTML = cart.map(p=>p.name+' - '+p.price+' جنيه').join('<br>') + '<hr><b>الاجمالي: '+total+' جنيه</b>';
-  }
-}
-function sendWhatsApp(){
-  let total = cart.reduce((sum,p)=>sum+p.price,0);
-  let text = "طلب جديد:%0A" + cart.map(p=>p.name+' - '+p.price+' جنيه').join('%0A') + '%0Aالاجمالي: '+total+' جنيه';
-  window.open('https://wa.me/201000?text='+text); // حط رقمك هنا 2010...
-}
-
-// حفظ البيانات
-function saveProducts(){
-  localStorage.setItem('products', JSON.stringify(products));
-}
-
-// الاحصائيات
-function updateStats(){
-  document.getElementById('totalProducts').innerText = products.length;
-  document.getElementById('totalOrders') = cart.length;
-  let total = cart.reduce((sum,p)=>sum+p.price,0);
-  document.getElementById('totalSales').innerText = total + ' جنيه';
-}
-</script>
-</body>
-</html>
